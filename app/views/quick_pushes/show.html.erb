@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex,nofollow,noarchive">
+  <title>临时文本</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; padding: 20px 12px; background: #f4f4f4; color: #222; }
+    .box { max-width: 760px; margin: 20px auto; background: #fff; border: 1px solid #ccc; padding: 18px; }
+    h1 { font-size: 21px; margin: 0 0 14px; }
+    pre { white-space: pre-wrap; word-wrap: break-word; overflow-wrap: break-word; font-family: Menlo, Monaco, Consolas, monospace; font-size: 17px; line-height: 1.5; margin: 0; }
+    .hint { color: #666; font-size: 13px; margin-top: 18px; }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <h1>临时文本</h1>
+    <pre><%= @payload %></pre>
+    <p class="hint">本页禁止缓存。达到设定的成功读取次数后，内容会自动销毁。</p>
+  </div>
+</body>
+</html>
