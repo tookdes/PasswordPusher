@@ -14,11 +14,13 @@ This fork adds a small personal secret-delivery flow on top of Password Pusher w
 
 The original Password Pusher UI and `/p/<token>` routes are still present.
 
-## Linux x64 single-file build
+## Linux x64 portable build
 
-GitHub Actions builds `password-pusher-linux-x64` using OCRAN. It bundles Ruby, Rails, gems and native libraries into one Linux x64 executable; Ruby does not need to be installed on the target machine. The executable self-extracts to a temporary directory when it starts.
+GitHub Actions builds `password-pusher-linux-x64-portable.tar.gz`. It contains Ruby, Rails, gems and the native libraries needed by the packaged application, so Ruby does not need to be installed on the target machine.
 
-The binary enables `PWP_PERSONAL_MODE=1` and defaults to a locked-down personal configuration:
+This is intentionally a portable directory rather than OCRAN's self-extracting single executable. The old single-file build expanded hundreds of megabytes into `/tmp` on every launch, which is slow on small VMs and can fail on systems with a small tmpfs. The portable build is extracted once during deployment and then runs directly from disk; normal startup does not unpack the application into `/tmp`.
+
+The package includes a `password-pusher` launcher and defaults to a locked-down personal configuration:
 
 - anonymous creation disabled;
 - public signups disabled;
@@ -31,32 +33,41 @@ All normal Password Pusher `PWP__...` settings remain overridable through enviro
 
 ### First run
 
-Create the first account directly from the binary (signups remain disabled):
+Extract the archive once:
 
 ```sh
-chmod +x password-pusher-linux-x64
-./password-pusher-linux-x64 --init-user you@example.com 'a-long-login-password'
+tar -xzf password-pusher-linux-x64-portable.tar.gz
+cd password-pusher-linux-x64
+chmod +x password-pusher pwp-standalone.sh
+```
+
+Create the first account (signups remain disabled):
+
+```sh
+./password-pusher --init-user you@example.com 'a-long-login-password'
 ```
 
 Then start it:
 
 ```sh
-./password-pusher-linux-x64
+./password-pusher
 ```
 
 Default bind address is `0.0.0.0`, default port is `5100`.
 
-Runtime data is stored in `password-pusher-data/` beside the executable by default. The directory contains the SQLite database plus generated `SECRET_KEY_BASE` and `PWPUSH_MASTER_KEY` files. Keep that directory private and back it up if existing encrypted pushes must survive a machine migration.
+Runtime data is stored in `password-pusher-data/` beside the package by default. The directory contains the SQLite database plus generated `SECRET_KEY_BASE` and `PWPUSH_MASTER_KEY` files. Keep that directory private and back it up if existing encrypted pushes must survive a machine migration.
 
 Useful overrides:
 
 ```sh
-PORT=8080 ./password-pusher-linux-x64
-PWP_BIND=127.0.0.1 ./password-pusher-linux-x64
-PWP_DATA_DIR=/srv/password-pusher ./password-pusher-linux-x64
+PORT=8080 ./password-pusher
+PWP_BIND=127.0.0.1 ./password-pusher
+PWP_DATA_DIR=/srv/password-pusher ./password-pusher
 ```
 
 For reverse-proxy deployments, set the standard Password Pusher URL/proxy settings such as `PWP__OVERRIDE_BASE_URL`, `PWP__ALLOWED_HOSTS`, `PWP__SECURE_COOKIES` and `PWP__CLOUDFLARE_PROXY` as appropriate.
+
+The CI smoke test deliberately runs the package inside a clean Ubuntu 22.04 container with `/tmp` limited to 64 MB. This catches accidental dependencies on the GitHub Actions build host and verifies that package startup no longer depends on extracting a large runtime into `/tmp`.
 
 ## Source/Docker deployments
 

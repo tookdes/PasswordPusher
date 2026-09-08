@@ -36,6 +36,17 @@ else
 end
 
 FileUtils.mkdir_p(base_dir)
+
+# Keep every mutable runtime path out of the packaged application tree. This
+# allows the portable bundle itself to be mounted/read-only and avoids falling
+# back to a small system /tmp tmpfs on constrained VMs.
+runtime_dir = File.join(base_dir, "runtime")
+runtime_tmp = File.join(runtime_dir, "tmp")
+runtime_pids = File.join(runtime_dir, "pids")
+FileUtils.mkdir_p([runtime_tmp, runtime_pids])
+ENV["PWP_RUNTIME_DIR"] ||= runtime_dir
+ENV["TMPDIR"] ||= runtime_tmp
+
 database_path = File.join(base_dir, "production.sqlite3")
 uses_default_sqlite = ENV["DATABASE_URL"].to_s.empty?
 ENV["DATABASE_URL"] = "sqlite3:#{database_path}" if uses_default_sqlite
@@ -70,15 +81,35 @@ end
 # Production eager-loading touches models that query their tables. On a brand
 # new installation that can happen before Rails' db:prepare task gets a chance
 # to create the database. Seed the current schema directly through ActiveRecord
-# first, then let db:prepare apply migrations normally after the application boots.
+# first. Loading schema.rb directly creates the tables but, unlike Rails'
+# db:schema:load task, does not populate schema_migrations. Record all migration
+# versions represented by the checked-in schema so the later db:prepare only
+# applies genuinely newer migrations instead of replaying the legacy history.
 def bootstrap_sqlite_database!(path)
   return if File.file?(path) && File.size?(path)
 
   FileUtils.rm_f(path)
   require "active_record"
   require "sqlite3"
+
   ActiveRecord::Base.establish_connection(adapter: "sqlite3", database: path)
-  load File.expand_path("../db/schema.rb", __dir__)
+  schema_path = File.expand_path("../db/schema.rb", __dir__)
+  load schema_path
+
+  schema_source = File.read(schema_path, encoding: "UTF-8")
+  schema_version = schema_source[/\.define\(version:\s*([0-9_]+)\)/, 1]&.delete("_")
+  raise "Could not determine schema version from #{schema_path}" if schema_version.to_s.empty?
+
+  connection = ActiveRecord::Base.connection
+  migration_versions = Dir[File.expand_path("../db/migrate/*.rb", __dir__)].filter_map do |file|
+    version = File.basename(file).split("_", 2).first
+    version if version.match?(/\A\d+\z/) && version.to_i <= schema_version.to_i
+  end
+
+  migration_versions.each do |version|
+    quoted = connection.quote(version)
+    connection.execute("INSERT OR IGNORE INTO schema_migrations (version) VALUES (#{quoted})")
+  end
 ensure
   ActiveRecord::Base.connection_pool.disconnect! if defined?(ActiveRecord::Base) && ActiveRecord::Base.connected?
 end
@@ -98,7 +129,7 @@ end
 if ARGV.first == "--init-user"
   email = ARGV[1].to_s.strip
   password = ARGV[2].to_s
-  abort "Usage: password-pusher-linux-x64 --init-user EMAIL PASSWORD" if email.empty? || password.length < 8
+  abort "Usage: password-pusher --init-user EMAIL PASSWORD" if email.empty? || password.length < 8
 
   require File.expand_path("../config/environment", __dir__)
   require "rake"
@@ -113,14 +144,19 @@ if ARGV.first == "--init-user"
   exit 0
 end
 
-# db:prepare is idempotent and applies new migrations when the binary is upgraded.
+# db:prepare is idempotent and applies new migrations when the package is upgraded.
 require File.expand_path("../config/application", __dir__)
 require "rake"
 Rails.application.load_tasks
 Rake::Task["db:prepare"].invoke
 
 if ARGV.empty?
-  ARGV.push("server", "-b", ENV.fetch("PWP_BIND", "0.0.0.0"), "-p", ENV.fetch("PORT", "5100"))
+  ARGV.push(
+    "server",
+    "-b", ENV.fetch("PWP_BIND", "0.0.0.0"),
+    "-p", ENV.fetch("PORT", "5100"),
+    "-P", File.join(runtime_pids, "server.pid")
+  )
 end
 
 require "rails/commands"

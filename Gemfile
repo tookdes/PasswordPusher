@@ -10,7 +10,9 @@ gem "importmap-rails"
 gem "turbo-rails"
 gem "stimulus-rails"
 gem "jbuilder"
-gem "tzinfo-data", platforms: %i[windows jruby]
+# The portable Linux package must not depend on /usr/share/zoneinfo being
+# installed on the target VM/container.
+gem "tzinfo-data"
 gem "solid_cache"
 gem "solid_queue"
 gem "solid_cable"
@@ -91,7 +93,10 @@ group :production, :development do
 end
 
 gem "rollbar"
-gem "version", git: "https://github.com/pglombardo/version.git", branch: "master"
+# Keep the upstream dependency locked for compatibility, but do not let
+# Bundler auto-require its git checkout. Packaged builds use config/pwpush_version.rb
+# so version reporting does not depend on a git-gem load path at runtime.
+gem "version", git: "https://github.com/pglombardo/version.git", branch: "master", require: false
 gem "madmin"
 gem "rotp", "~> 6.2"
 gem "rqrcode", "~> 3.2"
