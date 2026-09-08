@@ -1,0 +1,29 @@
+<% content_for :title, "已创建" %>
+
+<div class="container py-5" style="max-width: 760px;">
+  <%= render partial: "shared/topnav" %>
+
+  <div class="alert alert-success">
+    <h3 class="mb-2">已创建</h3>
+    <p class="mb-0">把下面的短地址和取件码交给收件人即可。创建者不需要再模拟一次读取。</p>
+  </div>
+
+  <div class="mb-3">
+    <label class="form-label fw-semibold">短地址</label>
+    <input class="form-control form-control-lg font-monospace" type="text" readonly value="<%= @share_url %>" onclick="this.select();">
+  </div>
+
+  <div class="mb-3">
+    <label class="form-label fw-semibold">取件码</label>
+    <input class="form-control form-control-lg font-monospace" type="text" readonly value="<%= @share_passphrase %>" onclick="this.select();">
+  </div>
+
+  <div class="mb-4 text-muted">
+    地址码：<code><%= @share_code %></code>；达到设定的成功读取次数或有效期后会失效。密码输错不会消耗读取次数。
+  </div>
+
+  <div class="d-flex gap-2">
+    <a class="btn btn-primary" href="<%= new_quick_push_path %>">再创建一个</a>
+    <a class="btn btn-outline-secondary" href="<%= pushes_path %>">查看我的 Push</a>
+  </div>
+</div>
