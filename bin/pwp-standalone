@@ -36,6 +36,17 @@ else
 end
 
 FileUtils.mkdir_p(base_dir)
+
+# Keep every mutable runtime path out of the packaged application tree. This
+# allows the portable bundle itself to be mounted/read-only and avoids falling
+# back to a small system /tmp tmpfs on constrained VMs.
+runtime_dir = File.join(base_dir, "runtime")
+runtime_tmp = File.join(runtime_dir, "tmp")
+runtime_pids = File.join(runtime_dir, "pids")
+FileUtils.mkdir_p([runtime_tmp, runtime_pids])
+ENV["PWP_RUNTIME_DIR"] ||= runtime_dir
+ENV["TMPDIR"] ||= runtime_tmp
+
 database_path = File.join(base_dir, "production.sqlite3")
 uses_default_sqlite = ENV["DATABASE_URL"].to_s.empty?
 ENV["DATABASE_URL"] = "sqlite3:#{database_path}" if uses_default_sqlite
@@ -140,7 +151,12 @@ Rails.application.load_tasks
 Rake::Task["db:prepare"].invoke
 
 if ARGV.empty?
-  ARGV.push("server", "-b", ENV.fetch("PWP_BIND", "0.0.0.0"), "-p", ENV.fetch("PORT", "5100"))
+  ARGV.push(
+    "server",
+    "-b", ENV.fetch("PWP_BIND", "0.0.0.0"),
+    "-p", ENV.fetch("PORT", "5100"),
+    "-P", File.join(runtime_pids, "server.pid")
+  )
 end
 
 require "rails/commands"
