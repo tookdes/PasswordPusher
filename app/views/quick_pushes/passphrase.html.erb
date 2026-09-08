@@ -20,12 +20,12 @@
   <div class="box">
     <h1>请输入取件码</h1>
     <% if @error.present? %><p class="error"><%= @error %></p><% end %>
-    <form method="post" action="<%= quick_access_path(@push.url_token) %>">
+    <form method="post" action="<%= quick_access_path(@short_code) %>">
       <input type="hidden" name="authenticity_token" value="<%= form_authenticity_token %>">
       <input type="password" name="passphrase" autocomplete="off" autofocus>
       <input type="submit" value="查看">
     </form>
-    <p class="hint">短地址：<%= @push.url_token %></p>
+    <p class="hint">短地址：<%= @short_code %></p>
   </div>
 </body>
 </html>
