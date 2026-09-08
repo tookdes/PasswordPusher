@@ -79,14 +79,6 @@ jobs:
           CI: ""
         run: bundle exec rails assets:precompile
 
-      - name: Align Bundler with packaged Ruby
-        run: |
-          gem install bundler -v 4.0.16 --no-document
-          bundle config unset deployment
-          bundle config set frozen false
-          bundle _4.0.16_ update --bundler=4.0.16
-          bundle _4.0.16_ --version
-
       - name: Install OCRAN
         run: gem install ocran --no-document
 
@@ -100,7 +92,7 @@ jobs:
         run: |
           ocran bin/pwp-standalone \
             app config db public lib Gemfile Gemfile.lock VERSION config.ru \
-            --gemfile Gemfile --no-autoload --gem-all --chdir-exe-dir \
+            --gemfile Gemfile --no-autoload --gem-all --gem-full=bundler --chdir-exe-dir \
             --output password-pusher-linux-x64
           chmod +x password-pusher-linux-x64
           file password-pusher-linux-x64
