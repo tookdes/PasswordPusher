@@ -36,7 +36,13 @@ jobs:
         uses: ruby/setup-ruby@v1
         with:
           ruby-version: "4.0.6"
-          bundler-cache: true
+          bundler-cache: false
+
+      - name: Install gems and refresh portable lockfile
+        run: |
+          bundle config set --local path vendor/bundle
+          bundle config set --local frozen false
+          bundle install --jobs 4
 
       - name: Configure ephemeral CI encryption keys
         run: |
@@ -158,6 +164,7 @@ jobs:
         run: |
           tar -C dist -czf password-pusher-linux-x64-portable.tar.gz password-pusher-linux-x64
           sha256sum password-pusher-linux-x64-portable.tar.gz > password-pusher-linux-x64-portable.tar.gz.sha256
+          cp Gemfile.lock Gemfile.lock.generated
           ls -lh password-pusher-linux-x64-portable.tar.gz password-pusher-linux-x64-portable.tar.gz.sha256
           cat password-pusher-linux-x64-portable.tar.gz.sha256
 
@@ -168,5 +175,6 @@ jobs:
           path: |
             password-pusher-linux-x64-portable.tar.gz
             password-pusher-linux-x64-portable.tar.gz.sha256
+            Gemfile.lock.generated
           if-no-files-found: error
           retention-days: 30
