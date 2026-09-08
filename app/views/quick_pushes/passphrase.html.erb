@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex,nofollow,noarchive">
+  <title>输入取件码</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; padding: 28px 16px; background: #f4f4f4; color: #222; }
+    .box { max-width: 520px; margin: 30px auto; background: #fff; border: 1px solid #ccc; padding: 22px; }
+    h1 { font-size: 24px; margin: 0 0 18px; }
+    p { line-height: 1.5; }
+    input[type=password] { box-sizing: border-box; width: 100%; font-size: 22px; padding: 10px; border: 1px solid #888; }
+    input[type=submit] { width: 100%; margin-top: 12px; font-size: 20px; padding: 10px; }
+    .error { color: #b00020; font-weight: bold; }
+    .hint { color: #666; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <h1>请输入取件码</h1>
+    <% if @error.present? %><p class="error"><%= @error %></p><% end %>
+    <form method="post" action="<%= quick_access_path(@push.url_token) %>">
+      <input type="hidden" name="authenticity_token" value="<%= form_authenticity_token %>">
+      <input type="password" name="passphrase" autocomplete="off" autofocus>
+      <input type="submit" value="查看">
+    </form>
+    <p class="hint">短地址：<%= @push.url_token %></p>
+  </div>
+</body>
+</html>
