@@ -211,6 +211,7 @@ class QuickPushesController < ApplicationController
     raise ActiveRecord::RecordNotFound unless CUSTOM_CODE_PATTERN.match?(code)
 
     @push = Push.includes(:audit_logs).find_by!(url_token: storage_token(code), kind: :text)
+    @short_code = code
   rescue ActiveRecord::RecordNotFound
     render :expired, layout: false, status: :gone
   end
