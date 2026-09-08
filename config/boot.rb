@@ -1,16 +1,28 @@
 # frozen_string_literal: true
 
-ENV["BUNDLE_GEMFILE"] ||= File.expand_path("../Gemfile", __dir__)
+bundle_gemfile = File.expand_path("../Gemfile", __dir__)
+bundle_lockfile = File.expand_path("../Gemfile.lock", __dir__)
 
-# Ruby 4.0.6 ships Bundler 4.0.16 as a default gem, while this application's
-# lockfile is generated with Bundler 4.0.12. OCRAN packages the lockfile Bundler,
-# so activate that exact version before requiring bundler/setup. Normal source
-# and Docker deployments keep their usual Bundler activation behavior.
-gem "bundler", "4.0.12" if ENV["PWP_STANDALONE"] == "1"
-require "bundler/setup"
+# OCRAN intentionally neutralizes the build machine's Bundler environment for
+# portable packages by exporting empty BUNDLE_GEMFILE/BUNDLE_LOCKFILE values
+# and pointing BUNDLER_SETUP at a no-op file. Password Pusher still uses
+# Bundler.require in config/application.rb, so restore the package-local
+# Gemfile/lockfile and activate the bundled Bundler explicitly.
+if ENV["PWP_STANDALONE"] == "1"
+  ENV["BUNDLE_GEMFILE"] = bundle_gemfile
+  ENV["BUNDLE_LOCKFILE"] = bundle_lockfile
+  ENV.delete("BUNDLER_SETUP")
 
-# Bootsnap caches absolute paths and provides little value for a self-extracting
-# executable whose application directory changes on every run.
+  gem "bundler", "4.0.12"
+  require "bundler"
+  Bundler.setup
+else
+  ENV["BUNDLE_GEMFILE"] ||= bundle_gemfile
+  require "bundler/setup"
+end
+
+# Bootsnap caches absolute paths and provides little value for the portable
+# standalone distribution, which already ships a fixed Ruby/gem tree.
 unless ENV["DISABLE_BOOTSNAP"] == "1"
   require "bootsnap/setup" # Speed up boot time by caching expensive operations.
 end
