@@ -47,9 +47,11 @@ class QuickPushesController < ApplicationController
       user_id: current_user.id
     )
 
-    @push.save!
-    assign_short_code!(@push, @quick[:code])
-    log_creation(@push)
+    Push.transaction do
+      @push.save!
+      assign_short_code!(@push, @quick[:code])
+      log_creation(@push)
+    end
 
     @share_url = quick_push_url(@push.url_token)
     @share_code = @push.url_token
@@ -59,7 +61,6 @@ class QuickPushesController < ApplicationController
     @errors = e.record.errors.full_messages
     render :new, status: :unprocessable_content
   rescue ActiveRecord::RecordNotUnique
-    @push&.destroy!
     @errors = ["取件地址已被占用，请换一个。"]
     render :new, status: :unprocessable_content
   end
@@ -132,7 +133,6 @@ class QuickPushesController < ApplicationController
     end
 
     @payload = result.payload
-    expires_now
     render :show, layout: false
     @push.expire! if result.expire_after_response
   end
