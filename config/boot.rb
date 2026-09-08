@@ -2,9 +2,11 @@
 
 ENV["BUNDLE_GEMFILE"] ||= File.expand_path("../Gemfile", __dir__)
 
-# Rails' application boot still relies on Bundler.require to load third-party
-# integrations such as Devise and Lockbox. The binary workflow aligns the
-# packaged Bundler version with Ruby's default Bundler before OCRAN runs.
+# Ruby 4.0.6 ships Bundler 4.0.16 as a default gem, while this application's
+# lockfile is generated with Bundler 4.0.12. OCRAN packages the lockfile Bundler,
+# so activate that exact version before requiring bundler/setup. Normal source
+# and Docker deployments keep their usual Bundler activation behavior.
+gem "bundler", "4.0.12" if ENV["PWP_STANDALONE"] == "1"
 require "bundler/setup"
 
 # Bootsnap caches absolute paths and provides little value for a self-extracting
