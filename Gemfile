@@ -91,7 +91,10 @@ group :production, :development do
 end
 
 gem "rollbar"
-gem "version", git: "https://github.com/pglombardo/version.git", branch: "master"
+# Keep the upstream dependency locked for compatibility, but do not let
+# Bundler auto-require its git checkout. Packaged builds use lib/version.rb so
+# version reporting does not depend on a git-gem load path at runtime.
+gem "version", git: "https://github.com/pglombardo/version.git", branch: "master", require: false
 gem "madmin"
 gem "rotp", "~> 6.2"
 gem "rqrcode", "~> 3.2"
