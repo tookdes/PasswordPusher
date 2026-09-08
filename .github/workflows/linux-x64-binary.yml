@@ -1,10 +1,10 @@
-name: Build Linux x64 binary
+name: Build Linux x64 portable bundle
 
 on:
   push:
     branches:
       - master
-      - personal-quick-share
+      - fix-linux-portable
   workflow_dispatch:
 
 permissions:
@@ -85,56 +85,88 @@ jobs:
       - name: Prepare dependency-scan database
         run: cp storage/db/test.sqlite3 /tmp/password-pusher-ocran.sqlite3
 
-      - name: Build self-contained Linux x64 executable
+      - name: Build portable Linux x64 directory
         env:
           PWP_OCRAN_SCAN: "1"
           DATABASE_URL: sqlite3:/tmp/password-pusher-ocran.sqlite3
         run: |
-          ocran bin/pwp-standalone \
-            app config db public lib Gemfile Gemfile.lock VERSION config.ru \
-            --gemfile Gemfile --no-autoload --gem-all --gem-full=bundler --chdir-exe-dir \
-            --output password-pusher-linux-x64
-          chmod +x password-pusher-linux-x64
-          file password-pusher-linux-x64
-          ls -lh password-pusher-linux-x64
+          rm -rf dist
+          mkdir -p dist
 
-      - name: Smoke test packaged executable
+          ocran \
+            --output-dir dist/password-pusher-linux-x64 \
+            --gemfile Gemfile --no-autoload --gem-all --gem-full=bundler \
+            bin/pwp-standalone \
+            app config db public lib Gemfile Gemfile.lock VERSION config.ru
+
+          cat > dist/password-pusher-linux-x64/password-pusher <<'SH'
+          #!/bin/sh
+          set -eu
+          SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+          cd "$SCRIPT_DIR"
+          exec "$SCRIPT_DIR/pwp-standalone.sh" "$@"
+          SH
+          chmod +x dist/password-pusher-linux-x64/password-pusher
+          chmod +x dist/password-pusher-linux-x64/pwp-standalone.sh
+
+          du -sh dist/password-pusher-linux-x64
+          find dist/password-pusher-linux-x64 -maxdepth 2 -type f | sort | head -50
+
+      - name: Smoke test in clean Ubuntu with tiny tmpfs
         run: |
           set -e
-          unset SECRET_KEY_BASE PWPUSH_MASTER_KEY
-          DATA_DIR="$(mktemp -d)"
-          export PWP_DATA_DIR="$DATA_DIR"
-          export PORT=5510
+          rm -rf .ci-data
+          mkdir -p .ci-data
 
-          ./password-pusher-linux-x64 --init-user test@example.com ci-test-password-12345
-          test -s "$DATA_DIR/secret_key_base"
-          test -s "$DATA_DIR/lockbox_master_key"
-          test -s "$DATA_DIR/production.sqlite3"
+          docker run --rm \
+            --tmpfs /tmp:rw,size=64m,mode=1777 \
+            -v "$PWD/dist/password-pusher-linux-x64:/opt/password-pusher:ro" \
+            -v "$PWD/.ci-data:/data" \
+            -e PWP_DATA_DIR=/data \
+            -e PORT=5510 \
+            ubuntu:22.04 \
+            bash -lc '
+              set -e
+              /opt/password-pusher/password-pusher --init-user test@example.com ci-test-password-12345
+              test -s /data/secret_key_base
+              test -s /data/lockbox_master_key
+              test -s /data/production.sqlite3
 
-          ./password-pusher-linux-x64 >"$DATA_DIR/server.log" 2>&1 &
-          SERVER_PID=$!
-          trap 'kill "$SERVER_PID" 2>/dev/null || true; cat "$DATA_DIR/server.log" || true' EXIT
+              /opt/password-pusher/password-pusher >/data/server.log 2>&1 &
+              pid=$!
+              trap "kill $pid 2>/dev/null || true" EXIT
 
-          for i in $(seq 1 120); do
-            if curl -fsS http://127.0.0.1:5510/up >/dev/null; then
-              curl -fsS -I http://127.0.0.1:5510/users/sign_in >/dev/null
-              curl -fsS -I http://127.0.0.1:5510/quick >/dev/null || true
-              exit 0
-            fi
-            if ! kill -0 "$SERVER_PID" 2>/dev/null; then
-              echo "Packaged server exited early"
+              for i in $(seq 1 90); do
+                if (exec 3<>/dev/tcp/127.0.0.1/5510) 2>/dev/null; then
+                  kill "$pid" 2>/dev/null || true
+                  wait "$pid" 2>/dev/null || true
+                  exit 0
+                fi
+                if ! kill -0 "$pid" 2>/dev/null; then
+                  cat /data/server.log
+                  exit 1
+                fi
+                sleep 1
+              done
+
+              echo "Timed out waiting for packaged server"
+              cat /data/server.log
               exit 1
-            fi
-            sleep 1
-          done
+            '
 
-          echo "Timed out waiting for packaged server"
-          exit 1
+      - name: Pack portable bundle
+        run: |
+          tar -C dist -czf password-pusher-linux-x64-portable.tar.gz password-pusher-linux-x64
+          sha256sum password-pusher-linux-x64-portable.tar.gz > password-pusher-linux-x64-portable.tar.gz.sha256
+          ls -lh password-pusher-linux-x64-portable.tar.gz password-pusher-linux-x64-portable.tar.gz.sha256
+          cat password-pusher-linux-x64-portable.tar.gz.sha256
 
-      - name: Upload binary
+      - name: Upload portable bundle
         uses: actions/upload-artifact@v4
         with:
-          name: password-pusher-linux-x64
-          path: password-pusher-linux-x64
+          name: password-pusher-linux-x64-portable
+          path: |
+            password-pusher-linux-x64-portable.tar.gz
+            password-pusher-linux-x64-portable.tar.gz.sha256
           if-no-files-found: error
           retention-days: 30
