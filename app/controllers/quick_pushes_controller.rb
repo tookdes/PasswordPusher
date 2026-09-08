@@ -7,6 +7,7 @@ class QuickPushesController < ApplicationController
 
   SHORT_CODE_ALPHABET = "23456789abcdefghjkmnpqrstuvwxyz".freeze
   SHORT_CODE_LENGTH = 6
+  STORAGE_TOKEN_PREFIX = "q."
   CUSTOM_CODE_PATTERN = /\A[a-z0-9](?:[a-z0-9-]{1,22}[a-z0-9])\z/
 
   before_action :authenticate_user!, only: %i[new create]
@@ -53,8 +54,9 @@ class QuickPushesController < ApplicationController
       log_creation(@push)
     end
 
-    @share_url = quick_push_url(@push.url_token)
-    @share_code = @push.url_token
+    short_code = short_code_for(@push)
+    @share_url = quick_push_url(short_code)
+    @share_code = short_code
     @share_passphrase = @quick[:passphrase]
     render :created, status: :created
   rescue ActiveRecord::RecordInvalid => e
@@ -92,7 +94,7 @@ class QuickPushesController < ApplicationController
         httponly: true,
         same_site: :lax
       }
-      redirect_to quick_push_path(@push.url_token), status: :see_other
+      redirect_to quick_push_path(short_code_for(@push)), status: :see_other
     else
       log_failed_passphrase(@push)
       @error = "取件码错误。"
@@ -113,7 +115,7 @@ class QuickPushesController < ApplicationController
         cookies[quick_cookie_name].to_s
       )
       unless authenticated
-        redirect_to quick_passphrase_path(@push.url_token)
+        redirect_to quick_passphrase_path(short_code_for(@push))
         return
       end
       cookies.delete(quick_cookie_name)
@@ -162,7 +164,7 @@ class QuickPushesController < ApplicationController
     if code.present? && !CUSTOM_CODE_PATTERN.match?(code)
       errors << "自定义地址只能使用 3–24 位小写字母、数字和连字符，且不能以连字符开头或结尾。"
     end
-    errors << "该自定义地址已被占用。" if code.present? && Push.exists?(url_token: code)
+    errors << "该自定义地址已被占用。" if code.present? && Push.exists?(url_token: storage_token(code))
 
     days = values[:expire_after_days].to_i
     unless days.between?(Settings.pw.expire_after_days_min, Settings.pw.expire_after_days_max)
@@ -179,8 +181,9 @@ class QuickPushesController < ApplicationController
 
   def assign_short_code!(push, requested_code)
     if requested_code.present?
-      push.update_column(:url_token, requested_code)
-      push.url_token = requested_code
+      token = storage_token(requested_code)
+      push.update_column(:url_token, token)
+      push.url_token = token
       return
     end
 
@@ -188,11 +191,12 @@ class QuickPushesController < ApplicationController
       code = Array.new(SHORT_CODE_LENGTH) {
         SHORT_CODE_ALPHABET[SecureRandom.random_number(SHORT_CODE_ALPHABET.length)]
       }.join
-      next if Push.exists?(url_token: code)
+      token = storage_token(code)
+      next if Push.exists?(url_token: token)
 
       begin
-        push.update_column(:url_token, code)
-        push.url_token = code
+        push.update_column(:url_token, token)
+        push.url_token = token
         return
       rescue ActiveRecord::RecordNotUnique
         next
@@ -203,13 +207,24 @@ class QuickPushesController < ApplicationController
   end
 
   def set_push
-    @push = Push.includes(:audit_logs).find_by!(url_token: params[:id].to_s.downcase)
+    code = params[:id].to_s.downcase
+    raise ActiveRecord::RecordNotFound unless CUSTOM_CODE_PATTERN.match?(code)
+
+    @push = Push.includes(:audit_logs).find_by!(url_token: storage_token(code), kind: :text)
   rescue ActiveRecord::RecordNotFound
     render :expired, layout: false, status: :gone
   end
 
+  def storage_token(code)
+    "#{STORAGE_TOKEN_PREFIX}#{code}"
+  end
+
+  def short_code_for(push)
+    push.url_token.delete_prefix(STORAGE_TOKEN_PREFIX)
+  end
+
   def quick_cookie_name
-    "quick-#{@push.url_token}-p"
+    "quick-#{short_code_for(@push)}-p"
   end
 
   def set_secret_response_headers
