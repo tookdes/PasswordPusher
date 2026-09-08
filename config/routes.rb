@@ -12,6 +12,7 @@ Rails.application.routes.draw do
     draw :madmin
     draw :users
     draw :pushes
+    draw :personal
     draw :pwp_api
 
     get "/pages/*id" => "pages#show", :as => :page, :format => false
@@ -23,7 +24,7 @@ Rails.application.routes.draw do
     draw :legacy_pages
     draw :legacy_pushes
 
-    root to: "pushes#new"
+    root to: ENV["PWP_PERSONAL_MODE"] == "1" ? "quick_pushes#new" : "pushes#new"
   end
 
   # Health check endpoint that returns a simple 200 OK response
