@@ -1,0 +1,103 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "fileutils"
+require "securerandom"
+
+ENV["RAILS_ENV"] ||= "production"
+ENV["RACK_ENV"] ||= ENV["RAILS_ENV"]
+ENV["RAILS_SERVE_STATIC_FILES"] ||= "1"
+ENV["RAILS_LOG_TO_STDOUT"] ||= "1"
+ENV["DISABLE_BOOTSNAP"] ||= "1"
+
+# Personal-mode defaults. Every setting can still be overridden by the caller.
+ENV["PWP_PERSONAL_MODE"] ||= "1"
+ENV["PWP__ALLOW_ANONYMOUS"] ||= "false"
+ENV["PWP__DISABLE_SIGNUPS"] ||= "true"
+ENV["PWP__ENABLE_FILE_PUSHES"] ||= "false"
+ENV["PWP__ENABLE_URL_PUSHES"] ||= "false"
+ENV["PWP__ENABLE_QR_PUSHES"] ||= "false"
+ENV["PWP__DEFAULT_LOCALE"] ||= "zh-CN"
+ENV["PWP__PW__EXPIRE_AFTER_VIEWS_DEFAULT"] ||= "1"
+ENV["PWP__PW__RETRIEVAL_STEP_DEFAULT"] ||= "false"
+ENV["PWP__PW__DELETABLE_PUSHES_DEFAULT"] ||= "false"
+
+executable = ENV["OCRAN_EXECUTABLE"].to_s
+base_dir = if ENV["PWP_DATA_DIR"].to_s != ""
+  File.expand_path(ENV["PWP_DATA_DIR"])
+elsif executable != ""
+  File.join(File.dirname(File.expand_path(executable)), "password-pusher-data")
+else
+  File.join(Dir.pwd, "password-pusher-data")
+end
+
+FileUtils.mkdir_p(base_dir)
+ENV["DATABASE_URL"] ||= "sqlite3:#{File.join(base_dir, "production.sqlite3")}" 
+
+if ENV["SECRET_KEY_BASE"].to_s.empty?
+  secret_path = File.join(base_dir, "secret_key_base")
+  if File.file?(secret_path)
+    ENV["SECRET_KEY_BASE"] = File.read(secret_path).strip
+  else
+    secret = SecureRandom.hex(64)
+    File.write(secret_path, "#{secret}\n")
+    File.chmod(0o600, secret_path)
+    ENV["SECRET_KEY_BASE"] = secret
+  end
+end
+
+# Password Pusher encrypts payloads and passphrases with Lockbox. Persist a
+# per-instance key beside the database so upgrades/restarts can still decrypt
+# previously created pushes.
+if ENV["PWPUSH_MASTER_KEY"].to_s.empty?
+  lockbox_key_path = File.join(base_dir, "lockbox_master_key")
+  if File.file?(lockbox_key_path)
+    ENV["PWPUSH_MASTER_KEY"] = File.read(lockbox_key_path).strip
+  else
+    lockbox_key = SecureRandom.hex(32)
+    File.write(lockbox_key_path, "#{lockbox_key}\n")
+    File.chmod(0o600, lockbox_key_path)
+    ENV["PWPUSH_MASTER_KEY"] = lockbox_key
+  end
+end
+
+APP_PATH = File.expand_path("../config/application", __dir__) unless defined?(APP_PATH)
+
+# OCRAN executes the entry script once while discovering dependencies. Boot the
+# full Rails environment so dependencies are visible, then stop before starting
+# a server or mutating the real runtime database.
+if ENV["PWP_OCRAN_SCAN"] == "1"
+  require File.expand_path("../config/environment", __dir__)
+  exit 0
+end
+
+if ARGV.first == "--init-user"
+  email = ARGV[1].to_s.strip
+  password = ARGV[2].to_s
+  abort "Usage: password-pusher-linux-x64 --init-user EMAIL PASSWORD" if email.empty? || password.length < 8
+
+  require File.expand_path("../config/environment", __dir__)
+  require "rake"
+  Rails.application.load_tasks
+  Rake::Task["db:prepare"].invoke
+
+  user = User.find_or_initialize_by(email: email)
+  user.password = password
+  user.password_confirmation = password
+  user.save!
+  puts "User ready: #{user.email}"
+  exit 0
+end
+
+# Prepare the SQLite database on each server start. db:prepare is idempotent and
+# applies new migrations when the binary is upgraded.
+require File.expand_path("../config/application", __dir__)
+require "rake"
+Rails.application.load_tasks
+Rake::Task["db:prepare"].invoke
+
+if ARGV.empty?
+  ARGV.push("server", "-b", ENV.fetch("PWP_BIND", "0.0.0.0"), "-p", ENV.fetch("PORT", "5100"))
+end
+
+require "rails/commands"
