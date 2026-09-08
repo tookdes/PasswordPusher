@@ -82,6 +82,8 @@ jobs:
       - name: Align Bundler with packaged Ruby
         run: |
           gem install bundler -v 4.0.16 --no-document
+          bundle config unset deployment
+          bundle config set frozen false
           bundle _4.0.16_ update --bundler=4.0.16
           bundle _4.0.16_ --version
 
