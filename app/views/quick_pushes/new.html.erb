@@ -1,0 +1,64 @@
+<% content_for :title, "快速投递" %>
+
+<div class="container py-4" style="max-width: 760px;">
+  <%= render partial: "shared/topnav" %>
+
+  <div class="mb-4">
+    <h2 class="mb-2">快速投递</h2>
+    <p class="text-muted mb-0">创建一个短地址 + 取件码保护的临时文本。收件页不依赖 JavaScript，可用于老旧浏览器。</p>
+  </div>
+
+  <% if @errors.present? %>
+    <div class="alert alert-danger">
+      <ul class="mb-0">
+        <% @errors.each do |error| %>
+          <li><%= error %></li>
+        <% end %>
+      </ul>
+    </div>
+  <% end %>
+
+  <%= form_with url: quick_pushes_path, scope: :quick, method: :post, local: true, data: {turbo: false} do |f| %>
+    <div class="mb-3">
+      <%= f.label :payload, "内容", class: "form-label fw-semibold" %>
+      <%= f.text_area :payload, value: @quick[:payload], rows: 8, class: "form-control", required: true, autofocus: true, autocomplete: "off", spellcheck: "false", placeholder: "粘贴密码、Token 或其他临时机密文本" %>
+    </div>
+
+    <div class="row g-3">
+      <div class="col-md-6">
+        <%= f.label :passphrase, "取件码 / PIN", class: "form-label fw-semibold" %>
+        <%= f.password_field :passphrase, value: @quick[:passphrase], class: "form-control", required: true, minlength: 4, autocomplete: "new-password", placeholder: "例如 4821" %>
+        <div class="form-text">至少 4 个字符。收件人必须输入正确取件码后才能读取。</div>
+      </div>
+      <div class="col-md-6">
+        <%= f.label :code, "自定义短地址（可选）", class: "form-label fw-semibold" %>
+        <div class="input-group">
+          <span class="input-group-text">/s/</span>
+          <%= f.text_field :code, value: @quick[:code], class: "form-control", maxlength: 24, autocomplete: "off", spellcheck: "false", placeholder: "留空自动生成 6 位" %>
+        </div>
+        <div class="form-text">仅小写字母、数字、连字符；留空会生成便于手输的短码。</div>
+      </div>
+    </div>
+
+    <div class="row g-3 mt-1">
+      <div class="col-md-6">
+        <%= f.label :expire_after_days, "有效期", class: "form-label fw-semibold" %>
+        <%= f.select :expire_after_days,
+          [["1 天", 1], ["3 天", 3], ["7 天", 7], ["14 天", 14], ["30 天", 30]].select { |(_, v)| v.between?(Settings.pw.expire_after_days_min, Settings.pw.expire_after_days_max) },
+          {selected: @quick[:expire_after_days].to_i},
+          {class: "form-select"} %>
+      </div>
+      <div class="col-md-6">
+        <%= f.label :expire_after_views, "成功读取次数", class: "form-label fw-semibold" %>
+        <%= f.select :expire_after_views,
+          [["1 次（阅后即焚）", 1], ["2 次", 2], ["3 次", 3], ["5 次", 5], ["10 次", 10]].select { |(_, v)| v.between?(Settings.pw.expire_after_views_min, Settings.pw.expire_after_views_max) },
+          {selected: @quick[:expire_after_views].to_i},
+          {class: "form-select"} %>
+      </div>
+    </div>
+
+    <div class="d-grid mt-4">
+      <%= f.submit "创建临时文本", class: "btn btn-primary btn-lg" %>
+    </div>
+  <% end %>
+</div>
