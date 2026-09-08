@@ -1,0 +1,140 @@
+name: Build Linux x64 binary
+
+on:
+  push:
+    branches:
+      - master
+      - personal-quick-share
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    env:
+      RAILS_ENV: production
+      RACK_ENV: production
+      RAILS_SERVE_STATIC_FILES: "1"
+      RAILS_LOG_TO_STDOUT: "1"
+      DISABLE_BOOTSNAP: "1"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential libpq-dev default-libmysqlclient-dev libsqlite3-dev \
+            libyaml-dev libssl-dev zlib1g-dev curl
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "4.0.6"
+          bundler-cache: true
+
+      - name: Configure ephemeral CI encryption keys
+        run: |
+          echo "SECRET_KEY_BASE=$(ruby -rsecurerandom -e 'print SecureRandom.hex(64)')" >> "$GITHUB_ENV"
+          echo "PWPUSH_MASTER_KEY=$(ruby -rsecurerandom -e 'print SecureRandom.hex(32)')" >> "$GITHUB_ENV"
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: yarn
+
+      - name: Install Yarn dependencies
+        run: |
+          corepack enable
+          yarn install --frozen-lockfile
+
+      - name: Build CSS
+        run: yarn build:css:single
+
+      - name: Prepare test database
+        env:
+          RAILS_ENV: test
+          RACK_ENV: test
+          CI: ""
+        run: |
+          mkdir -p storage/db
+          bundle exec rails db:schema:load
+
+      - name: Run quick-share tests
+        env:
+          RAILS_ENV: test
+          RACK_ENV: test
+        run: bundle exec rails test test/controllers/quick_pushes_controller_test.rb
+
+      - name: Precompile assets
+        env:
+          RAILS_ENV: test
+          RACK_ENV: test
+          CI: ""
+        run: bundle exec rails assets:precompile
+
+      - name: Install OCRAN
+        run: gem install ocran --no-document
+
+      - name: Prepare dependency-scan database
+        run: cp storage/db/test.sqlite3 /tmp/password-pusher-ocran.sqlite3
+
+      - name: Build self-contained Linux x64 executable
+        env:
+          PWP_OCRAN_SCAN: "1"
+          DATABASE_URL: sqlite3:/tmp/password-pusher-ocran.sqlite3
+        run: |
+          ocran bin/pwp-standalone \
+            app config db public lib Gemfile Gemfile.lock VERSION config.ru \
+            --gemfile Gemfile --no-autoload --gem-all --gem-full=bundler --chdir-exe-dir \
+            --output password-pusher-linux-x64
+          chmod +x password-pusher-linux-x64
+          file password-pusher-linux-x64
+          ls -lh password-pusher-linux-x64
+
+      - name: Smoke test packaged executable
+        run: |
+          set -e
+          unset SECRET_KEY_BASE PWPUSH_MASTER_KEY
+          DATA_DIR="$(mktemp -d)"
+          export PWP_DATA_DIR="$DATA_DIR"
+          export PORT=5510
+
+          ./password-pusher-linux-x64 --init-user test@example.com ci-test-password-12345
+          test -s "$DATA_DIR/secret_key_base"
+          test -s "$DATA_DIR/lockbox_master_key"
+          test -s "$DATA_DIR/production.sqlite3"
+
+          ./password-pusher-linux-x64 >"$DATA_DIR/server.log" 2>&1 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true; cat "$DATA_DIR/server.log" || true' EXIT
+
+          for i in $(seq 1 120); do
+            if curl -fsS http://127.0.0.1:5510/up >/dev/null; then
+              curl -fsS -I http://127.0.0.1:5510/users/sign_in >/dev/null
+              curl -fsS -I http://127.0.0.1:5510/quick >/dev/null || true
+              exit 0
+            fi
+            if ! kill -0 "$SERVER_PID" 2>/dev/null; then
+              echo "Packaged server exited early"
+              exit 1
+            fi
+            sleep 1
+          done
+
+          echo "Timed out waiting for packaged server"
+          exit 1
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: password-pusher-linux-x64
+          path: password-pusher-linux-x64
+          if-no-files-found: error
+          retention-days: 30
