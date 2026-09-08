@@ -8,9 +8,8 @@ Rails.application.configure do
   # Code is not reloaded between requests.
   config.enable_reloading = false
 
-  # Eager load code on boot. This eager loads most of Rails and
-  # your application in memory, allowing both threaded web servers
-  # and those relying on copy on write to perform better.
+  # Eager load code on boot. This eager loads most of Rails and your
+  # application in memory, allowing both threaded web servers and those relying on copy on write to perform better.
   # Rake tasks automatically ignore this option for performance.
   config.eager_load = true
 
@@ -95,8 +94,11 @@ Rails.application.configure do
   # Use a different cache store in production.
   # config.cache_store = :mem_cache_store
 
-  # Configure file cache store with expiration
-  config.cache_store = :file_store, Rails.root.join("tmp", "cache"), {
+  # Configure file cache store with expiration. Standalone packages set
+  # PWP_RUNTIME_DIR to a writable directory under PWP_DATA_DIR so an immutable
+  # application tree does not need a writable Rails.root/tmp.
+  cache_root = ENV["PWP_RUNTIME_DIR"].presence || Rails.root.join("tmp")
+  config.cache_store = :file_store, File.join(cache_root, "cache"), {
     expires_in: 1.hour,           # Default expiration for all cache entries
     race_condition_ttl: 10.seconds, # Prevents race conditions
     compress: true,               # Compress cache files to save space
@@ -111,7 +113,7 @@ Rails.application.configure do
   config.action_mailer.perform_caching = true
 
   # Ignore bad email addresses and do not raise email delivery errors.
-  # Set this to true and configure the email server for immediate delivery to raise delivery errors.
+  # Set this to true and configure the email server for immediate delivery to raise email errors.
   # config.action_mailer.raise_delivery_errors = false
 
   # Enable locale fallbacks for I18n (makes lookups for any locale fall back to
@@ -127,7 +129,7 @@ Rails.application.configure do
   # Enable DNS rebinding protection and other `Host` header attacks.
   # config.hosts = [
   #   "example.com",     # Allow requests from example.com
-  #   /.*\.example\.com/ # Allow requests from subdomains like `www.example.com`
+  #   /.*\.example\.com/ # Allow requests from subdomains like example.com
   # ]
   # Skip DNS rebinding protection for the default health check endpoint.
   # config.host_authorization = { exclude: ->(request) { request.path == "/up" } }
