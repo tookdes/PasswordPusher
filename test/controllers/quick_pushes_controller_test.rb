@@ -28,7 +28,7 @@ class QuickPushesControllerTest < ActionDispatch::IntegrationTest
     end
 
     assert_response :created
-    push = Push.find_by!(url_token: "phone-1")
+    push = Push.find_by!(url_token: "q.phone-1")
     assert_equal @user, push.user
     assert_equal 0, push.view_count
     assert_includes response.body, "/s/phone-1"
@@ -49,20 +49,21 @@ class QuickPushesControllerTest < ActionDispatch::IntegrationTest
     assert_response :created
     sign_out @user
 
-    push = Push.find_by!(url_token: "burn-test")
+    push = Push.find_by!(url_token: "q.burn-test")
 
-    post quick_access_path(push.url_token), params: {passphrase: "0000"}
+    post quick_access_path("burn-test"), params: {passphrase: "0000"}
     assert_response :unprocessable_content
     push.reload
     assert_equal 0, push.view_count
     assert_not push.expired?
 
-    post quick_access_path(push.url_token), params: {passphrase: "4821"}
+    post quick_access_path("burn-test"), params: {passphrase: "4821"}
     assert_response :see_other
     follow_redirect!
     assert_response :success
     assert_includes response.body, "temporary-secret"
-    assert_equal "no-store, no-cache, max-age=0, must-revalidate", response.headers["Cache-Control"]
+    assert_includes response.headers["Cache-Control"], "no-store"
+    assert_equal "no-referrer", response.headers["Referrer-Policy"]
 
     push.reload
     assert push.expired?
@@ -83,6 +84,23 @@ class QuickPushesControllerTest < ActionDispatch::IntegrationTest
 
     assert_response :created
     push = Push.order(:created_at).last
-    assert_match(/\A[23456789abcdefghjkmnpqrstuvwxyz]{6}\z/, push.url_token)
+    assert_match(/\Aq\.[23456789abcdefghjkmnpqrstuvwxyz]{6}\z/, push.url_token)
+    assert_match(%r{/s/[23456789abcdefghjkmnpqrstuvwxyz]{6}}, response.body)
+  end
+
+  test "normal Password Pusher tokens cannot be read through quick-share routes" do
+    normal = Push.create!(
+      kind: :text,
+      payload: "normal-push-secret",
+      passphrase: "4821",
+      expire_after_days: 1,
+      expire_after_views: 1,
+      user_id: @user.id
+    )
+    normal.update_column(:url_token, "normalcode")
+
+    get quick_push_path("normalcode")
+    assert_response :gone
+    assert_not_includes response.body, "normal-push-secret"
   end
 end
