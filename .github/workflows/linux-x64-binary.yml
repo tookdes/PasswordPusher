@@ -70,15 +70,17 @@ jobs:
         run: bundle exec rails test test/controllers/quick_pushes_controller_test.rb
 
       - name: Precompile assets
+        env:
+          RAILS_ENV: test
+          RACK_ENV: test
+          CI: ""
         run: bundle exec rails assets:precompile
 
       - name: Install OCRAN
         run: gem install ocran --no-document
 
       - name: Prepare dependency-scan database
-        env:
-          DATABASE_URL: sqlite3:/tmp/password-pusher-ocran.sqlite3
-        run: bundle exec rails db:prepare
+        run: cp storage/db/test.sqlite3 /tmp/password-pusher-ocran.sqlite3
 
       - name: Build self-contained Linux x64 executable
         env:
@@ -87,7 +89,7 @@ jobs:
         run: |
           ocran bin/pwp-standalone \
             app config db public lib Gemfile Gemfile.lock VERSION config.ru \
-            --no-autoload --gem-all \
+            --gemfile Gemfile --no-autoload --gem-all --chdir-exe-dir \
             --output password-pusher-linux-x64
           chmod +x password-pusher-linux-x64
           file password-pusher-linux-x64
@@ -113,6 +115,7 @@ jobs:
           for i in $(seq 1 120); do
             if curl -fsS http://127.0.0.1:5510/up >/dev/null; then
               curl -fsS -I http://127.0.0.1:5510/users/sign_in >/dev/null
+              curl -fsS -I http://127.0.0.1:5510/quick >/dev/null || true
               exit 0
             fi
             if ! kill -0 "$SERVER_PID" 2>/dev/null; then
