@@ -115,6 +115,15 @@ jobs:
           chmod +x dist/password-pusher-linux-x64/password-pusher
           chmod +x dist/password-pusher-linux-x64/pwp-standalone.sh
 
+          # Rails' server command insists these Rails.root/tmp subdirectories
+          # exist. Pre-create them so the application bundle itself may be
+          # mounted read-only; actual cache/PID/temp writes are redirected to
+          # PWP_DATA_DIR by bin/pwp-standalone.
+          mkdir -p \
+            dist/password-pusher-linux-x64/src/tmp/cache \
+            dist/password-pusher-linux-x64/src/tmp/pids \
+            dist/password-pusher-linux-x64/src/tmp/sockets
+
           du -sh dist/password-pusher-linux-x64
           find dist/password-pusher-linux-x64 -maxdepth 2 -type f | sort | head -50
 
