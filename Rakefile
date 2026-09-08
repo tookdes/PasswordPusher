@@ -7,7 +7,10 @@ require File.expand_path("config/application", __dir__)
 
 PasswordPusher::Application.load_tasks
 
-# Add version gem rake tasks
+# The application itself uses lib/version.rb so packaged runtime startup does
+# not depend on the git-sourced gem. Explicitly load the upstream gem here only
+# for its release/version Rake extensions and tasks.
+require "version"
 require "rake/version_task"
 Rake::VersionTask.new do |task|
   task.with_git_tag = true
