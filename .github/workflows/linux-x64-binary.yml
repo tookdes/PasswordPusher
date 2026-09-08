@@ -51,6 +51,9 @@ jobs:
           corepack enable
           yarn install --frozen-lockfile
 
+      - name: Build CSS
+        run: yarn build:css
+
       - name: Prepare test database
         env:
           RAILS_ENV: test
