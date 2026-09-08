@@ -17,8 +17,6 @@ jobs:
     env:
       RAILS_ENV: production
       RACK_ENV: production
-      SECRET_KEY_BASE: "11111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111"
-      PWPUSH_MASTER_KEY: "2222222222222222222222222222222222222222222222222222222222222222"
       RAILS_SERVE_STATIC_FILES: "1"
       RAILS_LOG_TO_STDOUT: "1"
       DISABLE_BOOTSNAP: "1"
@@ -39,6 +37,11 @@ jobs:
         with:
           ruby-version: "4.0.6"
           bundler-cache: true
+
+      - name: Configure ephemeral CI encryption keys
+        run: |
+          echo "SECRET_KEY_BASE=$(ruby -rsecurerandom -e 'print SecureRandom.hex(64)')" >> "$GITHUB_ENV"
+          echo "PWPUSH_MASTER_KEY=$(ruby -rsecurerandom -e 'print SecureRandom.hex(32)')" >> "$GITHUB_ENV"
 
       - name: Set up Node
         uses: actions/setup-node@v4
@@ -76,6 +79,12 @@ jobs:
           CI: ""
         run: bundle exec rails assets:precompile
 
+      - name: Align Bundler with packaged Ruby
+        run: |
+          gem install bundler -v 4.0.16 --no-document
+          bundle _4.0.16_ update --bundler=4.0.16
+          bundle _4.0.16_ --version
+
       - name: Install OCRAN
         run: gem install ocran --no-document
 
@@ -103,7 +112,7 @@ jobs:
           export PWP_DATA_DIR="$DATA_DIR"
           export PORT=5510
 
-          ./password-pusher-linux-x64 --init-user test@example.com password12345
+          ./password-pusher-linux-x64 --init-user test@example.com ci-test-password-12345
           test -s "$DATA_DIR/secret_key_base"
           test -s "$DATA_DIR/lockbox_master_key"
           test -s "$DATA_DIR/production.sqlite3"
