@@ -4,6 +4,9 @@
 require "fileutils"
 require "securerandom"
 
+# Secrets, the database and other runtime files should not be group/world-readable.
+File.umask(0o077)
+
 ENV["RAILS_ENV"] ||= "production"
 ENV["RACK_ENV"] ||= ENV["RAILS_ENV"]
 ENV["RAILS_SERVE_STATIC_FILES"] ||= "1"
@@ -32,7 +35,9 @@ else
 end
 
 FileUtils.mkdir_p(base_dir)
-ENV["DATABASE_URL"] ||= "sqlite3:#{File.join(base_dir, "production.sqlite3")}" 
+database_path = File.join(base_dir, "production.sqlite3")
+uses_default_sqlite = ENV["DATABASE_URL"].to_s.empty?
+ENV["DATABASE_URL"] = "sqlite3:#{database_path}" if uses_default_sqlite
 
 if ENV["SECRET_KEY_BASE"].to_s.empty?
   secret_path = File.join(base_dir, "secret_key_base")
@@ -60,6 +65,24 @@ if ENV["PWPUSH_MASTER_KEY"].to_s.empty?
     ENV["PWPUSH_MASTER_KEY"] = lockbox_key
   end
 end
+
+# Production eager-loading touches models that query their tables. On a brand
+# new installation that can happen before Rails' db:prepare task gets a chance
+# to create the database. Seed the current schema directly through ActiveRecord
+# first, then let db:prepare apply migrations normally after the application boots.
+def bootstrap_sqlite_database!(path)
+  return if File.file?(path) && File.size?(path)
+
+  FileUtils.rm_f(path)
+  require "active_record"
+  require "sqlite3"
+  ActiveRecord::Base.establish_connection(adapter: "sqlite3", database: path)
+  load File.expand_path("../db/schema.rb", __dir__)
+ensure
+  ActiveRecord::Base.connection_pool.disconnect! if defined?(ActiveRecord::Base) && ActiveRecord::Base.connected?
+end
+
+bootstrap_sqlite_database!(database_path) if uses_default_sqlite
 
 APP_PATH = File.expand_path("../config/application", __dir__) unless defined?(APP_PATH)
 
@@ -89,8 +112,7 @@ if ARGV.first == "--init-user"
   exit 0
 end
 
-# Prepare the SQLite database on each server start. db:prepare is idempotent and
-# applies new migrations when the binary is upgraded.
+# db:prepare is idempotent and applies new migrations when the binary is upgraded.
 require File.expand_path("../config/application", __dir__)
 require "rake"
 Rails.application.load_tasks
