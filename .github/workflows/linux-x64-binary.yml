@@ -55,7 +55,7 @@ jobs:
           yarn install --frozen-lockfile
 
       - name: Build CSS
-        run: yarn build:css
+        run: yarn build:css:single
 
       - name: Prepare test database
         env:
