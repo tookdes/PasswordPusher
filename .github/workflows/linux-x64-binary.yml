@@ -51,6 +51,15 @@ jobs:
           corepack enable
           yarn install --frozen-lockfile
 
+      - name: Prepare test database
+        env:
+          RAILS_ENV: test
+          RACK_ENV: test
+          CI: ""
+        run: |
+          mkdir -p storage/db
+          bundle exec rails db:schema:load
+
       - name: Run quick-share tests
         env:
           RAILS_ENV: test
